@@ -3,6 +3,7 @@ from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error, r2_score
 import matplotlib.pyplot as plt
 from sklearn.tree import plot_tree
+import joblib
 from models_and_constants import load_training_data, Input, InputOutputPair
 
 
@@ -12,24 +13,23 @@ def train():
     df_X = pd.DataFrame([point.input.model_dump() for point in training_data])
     df_Y = pd.DataFrame([point.expected_output for point in training_data])
     regressor = RandomForestRegressor(
-        n_estimators=10,
+        n_estimators=100,
         random_state=0,
         oob_score=True,
     )
-    regressor.fit(df_X.values, df_Y.values)
-    Y_hat = regressor.predict(df_X.values)
-    
-    import ipdb; ipdb.set_trace() #fmt: skip # noqa
-    # TODO: dump model to disk
+    regressor.fit(df_X.values, df_Y.values.ravel())
+    joblib.dump(regressor, "trained_model.pkl")
     return regressor
 
 def load_model() -> RandomForestRegressor:
-    # TODO: load model
-    return train()
+    try:
+        return joblib.load("trained_model.pkl")
+    except FileNotFoundError as e:
+        raise e
+        # return train()
 
 
-def visualize_model():
-    # TODO: load model
+def inspect_model():
     regressor = load_model()
     tree_to_plot = regressor.estimators_[0]
     training_data = load_training_data()
@@ -51,13 +51,11 @@ def visualize_model():
         fontsize=10,
     )
     plt.title("Decision Tree from Random Forest")
-    plt.show()
+    plt.savefig("decision_tree.png")
     # TODO: show UMAP of 3d data colored by error
 
 
 def predict(input: Input) -> float:
-    # TODO: load model
-    # TODO: predict
     regressor = load_model()
     df_X = pd.DataFrame([input.model_dump()])
     Y = regressor.predict(df_X.values)
@@ -66,3 +64,4 @@ def predict(input: Input) -> float:
 
 if __name__ == "__main__":
     train()
+    inspect_model()
