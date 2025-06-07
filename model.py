@@ -92,6 +92,10 @@ def train_production_model():
 
 
 def load_model():
+    import os
+    if not os.path.exists("production_model.pkl"):
+        print("No model found. Training default model...")
+        return train_production_model()
     return joblib.load("production_model.pkl")
     
 def predict(input: Input) -> float:
