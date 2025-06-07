@@ -73,16 +73,11 @@ def cross_validate_model(
     }
 
 
-def generate_hyperparameter_grid(quick_search: bool = False) -> List[Dict[str, Any]]:
-    if quick_search:
-        param_grid = {
-            "n_estimators": [50, 100, 200],
-            "max_depth": [None, 20],
-            "min_samples_split": [2, 5],
-            "min_samples_leaf": [1, 2],
-            "max_features": ["sqrt", "log2"],
-            "bootstrap": [True],
-        }
+def generate_hyperparameter_grid(
+    custom_ranges: Dict[str, List] | None = None,
+) -> List[Dict[str, Any]]:
+    if custom_ranges:
+        param_grid = custom_ranges
     else:
         param_grid = {
             "n_estimators": [50, 100, 200, 500],
@@ -100,10 +95,288 @@ def generate_hyperparameter_grid(quick_search: bool = False) -> List[Dict[str, A
     return [dict(zip(keys, combo)) for combo in combinations]
 
 
+def expand_parameter_ranges(
+    best_params: Dict[str, Any], current_ranges: Dict[str, List]
+) -> Dict[str, List]:
+    expanded_ranges = current_ranges.copy()
+
+    # n_estimators: expand if at boundary
+    if best_params["n_estimators"] == max(current_ranges["n_estimators"]):
+        max_val = max(current_ranges["n_estimators"])
+        new_values = [max_val * 2, max_val * 4]
+        expanded_ranges["n_estimators"] = current_ranges["n_estimators"] + new_values
+        print(f"Expanding n_estimators: adding {new_values}")
+    elif best_params["n_estimators"] == min(current_ranges["n_estimators"]):
+        min_val = min(current_ranges["n_estimators"])
+        new_values = [max(1, min_val // 2), max(1, min_val // 4)]
+        expanded_ranges["n_estimators"] = new_values + current_ranges["n_estimators"]
+        print(f"Expanding n_estimators: adding {new_values}")
+
+    # max_depth: expand if at boundary (skip None)
+    numeric_depths = [d for d in current_ranges["max_depth"] if d is not None]
+    if numeric_depths and best_params["max_depth"] == max(numeric_depths):
+        max_val = max(numeric_depths)
+        new_values = [max_val + 20, max_val + 50]
+        expanded_ranges["max_depth"] = current_ranges["max_depth"] + new_values
+        print(f"Expanding max_depth: adding {new_values}")
+    elif numeric_depths and best_params["max_depth"] == min(numeric_depths):
+        min_val = min(numeric_depths)
+        new_values = [max(1, min_val - 5), max(1, min_val - 10)]
+        expanded_ranges["max_depth"] = new_values + current_ranges["max_depth"]
+        print(f"Expanding max_depth: adding {new_values}")
+
+    # min_samples_split: expand if at boundary
+    if best_params["min_samples_split"] == max(current_ranges["min_samples_split"]):
+        max_val = max(current_ranges["min_samples_split"])
+        new_values = [max_val + 5, max_val + 10, max_val + 20]
+        expanded_ranges["min_samples_split"] = (
+            current_ranges["min_samples_split"] + new_values
+        )
+        print(f"Expanding min_samples_split: adding {new_values}")
+
+    # min_samples_leaf: expand if at boundary
+    if best_params["min_samples_leaf"] == max(current_ranges["min_samples_leaf"]):
+        max_val = max(current_ranges["min_samples_leaf"])
+        new_values = [max_val + 2, max_val + 5, max_val + 10]
+        expanded_ranges["min_samples_leaf"] = (
+            current_ranges["min_samples_leaf"] + new_values
+        )
+        print(f"Expanding min_samples_leaf: adding {new_values}")
+
+    return expanded_ranges
+
+
+def fast_hyperparameter_search(
+    custom_ranges: Dict[str, List] | None = None,
+    max_experiments: int = 20,
+) -> pd.DataFrame:
+    print("Running fast hyperparameter search...")
+
+    if custom_ranges is None:
+        current_ranges = {
+            "n_estimators": [100, 500, 1000],
+            "max_depth": [None, 30],
+            "min_samples_split": [2, 10],
+            "min_samples_leaf": [1, 4],
+            "max_features": ["sqrt", None],
+            "bootstrap": [True],
+        }
+    else:
+        current_ranges = custom_ranges
+
+    print("Parameter ranges:")
+    for param, values in current_ranges.items():
+        print(f"  {param}: {values}")
+
+    grid = generate_hyperparameter_grid(current_ranges)
+
+    if len(grid) > max_experiments:
+        print(f"Grid has {len(grid)} combinations, sampling {max_experiments}")
+        np.random.seed(42)
+        indices = np.random.choice(len(grid), max_experiments, replace=False)
+        grid = [grid[i] for i in indices]
+
+    print(f"Testing {len(grid)} parameter combinations...")
+
+    results = []
+    for i, params in enumerate(grid):
+        if i % 5 == 0:
+            print(f"Progress: {i+1}/{len(grid)}")
+        try:
+            cv_results = cross_validate_model(
+                params, 2, use_feature_engineering=True
+            )  # 2-fold for max speed
+            results.append(cv_results)
+        except Exception as e:
+            print(f"Failed for params {params}: {e}")
+            continue
+
+    df_results = pd.DataFrame(results)
+    df_results = df_results.sort_values("mean_cv_score", ascending=False)
+
+    print(f"\nTop 5 results:")
+    for i, (_, row) in enumerate(df_results.head(5).iterrows()):
+        params = row["hyperparams"]
+        score = row["mean_cv_score"]
+        print(f"  {i+1}. R²={score:.6f}: {params}")
+
+    # Check if best params hit boundaries
+    best_params = df_results.iloc[0]["hyperparams"]
+    print(f"\nBoundary analysis for best params: {best_params}")
+
+    boundary_hits = []
+    if best_params["n_estimators"] == max(current_ranges["n_estimators"]):
+        boundary_hits.append(f"n_estimators hit max ({best_params['n_estimators']})")
+    if best_params["n_estimators"] == min(current_ranges["n_estimators"]):
+        boundary_hits.append(f"n_estimators hit min ({best_params['n_estimators']})")
+
+    numeric_depths = [d for d in current_ranges["max_depth"] if d is not None]
+    if numeric_depths and best_params["max_depth"] == max(numeric_depths):
+        boundary_hits.append(f"max_depth hit max ({best_params['max_depth']})")
+
+    if best_params["min_samples_split"] == max(current_ranges["min_samples_split"]):
+        boundary_hits.append(
+            f"min_samples_split hit max ({best_params['min_samples_split']})"
+        )
+    if best_params["min_samples_split"] == min(current_ranges["min_samples_split"]):
+        boundary_hits.append(
+            f"min_samples_split hit min ({best_params['min_samples_split']})"
+        )
+
+    if best_params["min_samples_leaf"] == max(current_ranges["min_samples_leaf"]):
+        boundary_hits.append(
+            f"min_samples_leaf hit max ({best_params['min_samples_leaf']})"
+        )
+    if best_params["min_samples_leaf"] == min(current_ranges["min_samples_leaf"]):
+        boundary_hits.append(
+            f"min_samples_leaf hit min ({best_params['min_samples_leaf']})"
+        )
+
+    if boundary_hits:
+        print("*** BOUNDARY HITS DETECTED ***")
+        for hit in boundary_hits:
+            print(f"  {hit}")
+        print("Consider expanding ranges and re-running!")
+
+        # Suggest expanded ranges
+        print("\nSuggested expanded ranges:")
+        new_ranges = current_ranges.copy()
+
+        if best_params["n_estimators"] == max(current_ranges["n_estimators"]):
+            max_val = max(current_ranges["n_estimators"])
+            new_ranges["n_estimators"] = current_ranges["n_estimators"] + [
+                max_val * 2,
+                max_val * 3,
+            ]
+
+        if numeric_depths and best_params["max_depth"] == max(numeric_depths):
+            max_val = max(numeric_depths)
+            new_ranges["max_depth"] = current_ranges["max_depth"] + [
+                max_val + 30,
+                max_val + 60,
+            ]
+
+        if best_params["min_samples_split"] == max(current_ranges["min_samples_split"]):
+            max_val = max(current_ranges["min_samples_split"])
+            new_ranges["min_samples_split"] = current_ranges["min_samples_split"] + [
+                max_val + 10,
+                max_val + 20,
+            ]
+
+        if best_params["min_samples_leaf"] == max(current_ranges["min_samples_leaf"]):
+            max_val = max(current_ranges["min_samples_leaf"])
+            new_ranges["min_samples_leaf"] = current_ranges["min_samples_leaf"] + [
+                max_val + 5,
+                max_val + 10,
+            ]
+
+        for param, values in new_ranges.items():
+            if values != current_ranges[param]:
+                print(f"  {param}: {values}")
+    else:
+        print("No boundary hits detected. Current ranges seem adequate.")
+
+    return df_results
+
+
+def run_adaptive_hyperparameter_experiment() -> None:
+    print("Running fast adaptive hyperparameter search...")
+    results_df = fast_hyperparameter_search(max_experiments=50)
+
+    # Save detailed results
+    results_df.to_csv("adaptive_hyperparameter_results.csv", index=False)
+    print("Detailed results saved to adaptive_hyperparameter_results.csv")
+
+    # Print top 10 results
+    print("\nTop 10 hyperparameter combinations:")
+    print("=" * 100)
+    for i, (_, row) in enumerate(results_df.head(10).iterrows()):
+        print(f"\nRank {i+1}:")
+        print(f"  Mean CV R²: {row['mean_cv_score']:.6f} ± {row['std_cv_score']:.6f}")
+        print(f"  Mean MSE: {row['mean_mse']:.2f} ± {row['std_mse']:.2f}")
+        print(f"  Hyperparams: {row['hyperparams']}")
+
+    # Train final model with absolute best hyperparameters
+    best_params = results_df.iloc[0]["hyperparams"]
+    best_score = results_df.iloc[0]["mean_cv_score"]
+
+    print(f"\n{'='*80}")
+    print(f"TRAINING FINAL PRODUCTION MODEL")
+    print(f"{'='*80}")
+    print(f"Best CV R²: {best_score:.6f}")
+    print(f"Best hyperparameters: {best_params}")
+
+    final_model = train_model_with_features(best_params, use_feature_engineering=True)
+
+    # Save as production model
+    joblib.dump(final_model, "production_model.pkl")
+    print(f"\n🎯 PRODUCTION MODEL SAVED as production_model.pkl")
+    print(f"Model trained with feature engineering and best hyperparameters")
+
+    # Test the final model on training data to verify
+    training_data = load_training_data()
+    inputs = [point.input for point in training_data]
+    df_X = engineer_features_batch(inputs, use_feature_engineering=True)
+    df_Y = pd.DataFrame([point.expected_output for point in training_data])
+
+    Y_hat = final_model.predict(df_X.values)
+    from sklearn.metrics import mean_squared_error, r2_score
+
+    final_r2 = r2_score(df_Y.values, Y_hat)
+    final_mse = mean_squared_error(df_Y.values, Y_hat)
+
+    print(f"\nFinal model training performance:")
+    print(f"  R² on full training set: {final_r2:.6f}")
+    print(f"  MSE on full training set: {final_mse:.2f}")
+    print(f"  Expected CV R²: {best_score:.6f}")
+
+
+def test_expanded_ranges() -> None:
+    print("Testing with expanded ranges based on previous boundary hits...")
+
+    # Focused on most promising combinations
+    expanded_ranges = {
+        "n_estimators": [1000, 2000],
+        "max_depth": [30, 60, None],
+        "min_samples_split": [2],
+        "min_samples_leaf": [1],
+        "max_features": ["sqrt", None],
+        "bootstrap": [True],
+    }
+
+    results_df = fast_hyperparameter_search(expanded_ranges, max_experiments=12)
+
+    # Save results and train best model
+    results_df.to_csv("expanded_range_results.csv", index=False)
+    print("Results saved to expanded_range_results.csv")
+
+    best_params = results_df.iloc[0]["hyperparams"]
+    best_score = results_df.iloc[0]["mean_cv_score"]
+
+    print(f"\nTraining final model with expanded range best params...")
+    print(f"Best R²: {best_score:.6f}")
+    print(f"Best params: {best_params}")
+
+    final_model = train_model_with_features(best_params, use_feature_engineering=True)
+    joblib.dump(final_model, "production_model.pkl")
+    print("🎯 PRODUCTION MODEL SAVED as production_model.pkl")
+
+
 def hyperparameter_search(
     k_folds: int = 5, max_experiments: int = 50, quick_search: bool = False
 ) -> pd.DataFrame:
-    grid = generate_hyperparameter_grid(quick_search=quick_search)
+    if quick_search:
+        custom_ranges = {
+            "n_estimators": [50, 100, 200],
+            "max_depth": [None, 20],
+            "min_samples_split": [2, 5],
+            "min_samples_leaf": [1, 2],
+            "max_features": ["sqrt", "log2"],
+            "bootstrap": [True],
+        }
+        grid = generate_hyperparameter_grid(custom_ranges)
+    else:
+        grid = generate_hyperparameter_grid()
 
     if len(grid) > max_experiments:
         print(f"Grid has {len(grid)} combinations, sampling {max_experiments}")
@@ -157,7 +430,9 @@ def inspect_model():
     inputs = [point.input for point in training_data]
     df_Y = pd.DataFrame([point.expected_output for point in training_data])
 
-    use_feature_engineering = hasattr(regressor, "n_features_in_") and regressor.n_features_in_ > 3
+    use_feature_engineering = (
+        hasattr(regressor, "n_features_in_") and regressor.n_features_in_ > 3
+    )
     df_X = engineer_features_batch(inputs, use_feature_engineering)
 
     Y_hat = regressor.predict(df_X.values)
@@ -307,7 +582,9 @@ def find_edge_cases(num_cases: int = 20) -> None:
     df_X = pd.DataFrame([point.input.model_dump() for point in training_data])
     df_Y = pd.DataFrame([point.expected_output for point in training_data])
 
-    use_feature_engineering = hasattr(regressor, "n_features_in_") and regressor.n_features_in_ > 3
+    use_feature_engineering = (
+        hasattr(regressor, "n_features_in_") and regressor.n_features_in_ > 3
+    )
     df_X_pred = engineer_features_batch(inputs, use_feature_engineering)
 
     Y_hat = regressor.predict(df_X_pred.values)
@@ -352,13 +629,32 @@ if __name__ == "__main__":
 
     if len(args) == 0:
         print("Usage:")
-        print("  python experiments.py hyperparameter-search")
+        print(
+            "  python experiments.py fast-search            # RECOMMENDED: Fast boundary-aware search"
+        )
+        print(
+            "  python experiments.py expanded-search        # Test with expanded ranges"
+        )
+        print(
+            "  python experiments.py adaptive-search        # Full adaptive search (slower)"
+        )
+        print(
+            "  python experiments.py hyperparameter-search  # Standard hyperparameter search"
+        )
         print("  python experiments.py quick-search")
         print("  python experiments.py test-cv")
         print("  python experiments.py edge-cases [N]")
         print("  python experiments.py test-enhanced")
         print("  python experiments.py compare-cv")
         print("  python experiments.py inspect")
+    elif args[0] == "fast-search":
+        results = fast_hyperparameter_search(max_experiments=20)
+        results.to_csv("fast_search_results.csv", index=False)
+        print("Results saved to fast_search_results.csv")
+    elif args[0] == "expanded-search":
+        test_expanded_ranges()
+    elif args[0] == "adaptive-search":
+        run_adaptive_hyperparameter_experiment()
     elif args[0] == "hyperparameter-search":
         run_hyperparameter_experiment()
     elif args[0] == "quick-search":
