@@ -1,3 +1,4 @@
+import sys
 import pandas as pd
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error, r2_score
@@ -61,7 +62,9 @@ def predict(input: Input) -> float:
     Y = regressor.predict(df_X.values)
     return float(Y[0])
 
-
+args = sys.argv[1:]
+skip_training = args[0] == "skip-training"
 if __name__ == "__main__":
-    train()
+    if not skip_training:
+        train()
     inspect_model()

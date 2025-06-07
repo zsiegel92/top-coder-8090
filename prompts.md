@@ -1,0 +1,3 @@
+Tasks:
+- The random forest model in `model.py` may not be very good - it's hard to tell. If you can make the model better AND have reason to believe your changes will not overfit, please do that. Do not implement cross-validation for now, we will do that later.
+- The tree plot looks pretty bad. Too many nodes to actually interpret it. I'm not sure whether the model  Can you run model.py a bunch of times with changes to inspect_model
