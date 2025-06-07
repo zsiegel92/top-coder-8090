@@ -9,7 +9,7 @@ def parse_args():
 		raise ValueError("Expected 3 arguments")
 	return Input(
 		trip_duration_days=int(args[0]),
-		miles_traveled=int(args[1]),
+		miles_traveled=float(args[1]),
 		total_receipts_amount=float(args[2]),
 	)
 
