@@ -16,6 +16,8 @@
 # echo "scale=2; $1 * 100 + $2 * 0.5 + $3" | bc
 
 # TODO: Replace this with your actual implementation
-echo "TODO: Implement your reimbursement calculation here"
-echo "Input: $1 days, $2 miles, \$$3 receipts"
-echo "Output should be a single number (the reimbursement amount)" 
+# echo "TODO: Implement your reimbursement calculation here"
+# echo "Input: $1 days, $2 miles, \$$3 receipts"
+# echo "Output should be a single number (the reimbursement amount)" 
+
+python main.py "$1" "$2" "$3"
