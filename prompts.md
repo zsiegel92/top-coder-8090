@@ -11,6 +11,10 @@ Tasks:
 
 ---
 
+As you go, use `pyright <filename>` to ensure you are generating statically correct code. You can run any of these files with `python <filename>` (should use the virtual environment that is already activated in this terminal) and install packages with `uv` if needed.
+
+
+---
 
 Now we are going to implement 5-fold cross-validation with our model architecture to choose hyperparameters without overfitting.
 
@@ -20,10 +24,90 @@ Now we are going to implement 5-fold cross-validation with our model architectur
 
 
 
+---
 
+So which one is the best? What did we learn? Did they perform vastly differently or not really?
+
+
+Okay you say "the improvement is modest" but obviously over this training set training on the whole thing should be better, the goal is to make it perform better on unseen data! Am I missing something?
+
+
+```md
+ The top-performing hyperparameters achieved R² = 0.9192 ±
+   0.0141:
+  {
+      'n_estimators': 500,
+      'max_depth': None,
+      'min_samples_split': 5,
+      'min_samples_leaf': 4,
+      'max_features': None,
+      'bootstrap': True
+  }
+
+  Key Insights
+
+  1. More Trees = Better Performance
+
+  - 500 estimators performed best
+  - 200+ estimators consistently outperformed 50-100 trees
+  - Diminishing returns suggest 500 is near optimal
+
+  2. Deeper Trees Work Better
+
+  - max_depth=None (unlimited) was optimal
+  - Limited depth (10, 20, 30) consistently underperformed
+  - The data benefits from complex decision boundaries
+
+  3. Regularization Helps
+
+  - min_samples_leaf=4 was optimal (vs default 1)
+  - min_samples_split=5 outperformed default 2
+  - These prevent overfitting by requiring more samples per
+   decision
+
+  4. Feature Selection Matters
+
+  - max_features=None (use all features) was best
+  - With only 3 features total, restricting to 'sqrt' (1-2
+  features) hurt performance
+  - Small feature space benefits from using all available
+  information
+
+  5. Bootstrap is Essential
+
+  - All bootstrap=False experiments failed (OOB score
+  incompatibility)
+  - Bootstrap sampling provides ensemble diversity
+
+  Performance Improvement
+
+  - Baseline model: R² = 0.9165, MSE = 18,408
+  - Optimized model: R² = 0.9192, MSE = 17,766
+  - Improvement: +0.27% R², -3.5% MSE
+
+  The improvement is modest because the original model was
+  already very good. The hyperparameter optimization
+  provided a statistically significant but small
+  performance gain while ensuring we're using the best
+  possible configuration.
+
+```
+
+
+
+
+---
+
+Rather than `dict` and `update`, make things more type-safe - you can sacrifice a little convenience for this. Make some sort of `RandomForestHyperParameters` Pydantic model (in `models_and_constants.py`) and pass the parameters to `RandomForestRegressor` each explicitly
 
 ---
 
 Now we are going to make `model.py` a little bit more agnostic to model architecture - make some of the hyperparameters determine which *type* of model we are using and compare the random forest to one or two other reasonable model choices, e.g. a dense MLP. Different model architectures should each have their own pydantic model representing their hyperparameters and the input to `train` should be something like `RandomForestHyperParameters | MLPHyperParameters`. If it simplifies things for both of those to inherit from a shared class to make it easier to use some shared fields to organize runs, that's cool! Define models in the `models_and_constants.py` file.
 
 Refactor in that way and then run an experiment where you compare each model (with cross-validation) and generate a spreadsheet that makes it clear which is the best one! Save all models to a subdirectory called `model_weights/`, give `load_model` an easy parameter to choose which one (probably it should take one of those HyperParameters objects meentioned above) and then change `predict` to load the "best" model and use it!
+
+
+---
+
+
+Finally, remove all comments you added to the code. Remove docstrings as well.
