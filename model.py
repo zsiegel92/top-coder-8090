@@ -92,18 +92,8 @@ def train_production_model():
 
 
 def load_model():
-    try:
-        return joblib.load("production_model.pkl")
-    except FileNotFoundError:
-        try:
-            return joblib.load("best_trained_model.pkl")
-        except FileNotFoundError:
-            try:
-                return joblib.load("trained_model.pkl")
-            except FileNotFoundError:
-                return train_production_model()
-
-
+    return joblib.load("production_model.pkl")
+    
 def predict(input: Input) -> float:
     regressor = load_model()
     

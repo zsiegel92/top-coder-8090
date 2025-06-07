@@ -104,3 +104,43 @@ Finally, remove all comments you added to the code. Remove docstrings as well. C
 ---
 
 Okay can you find the 20 examples in our training data for which this model performs the worst? These are "edge cases". Store them in a CSV called `edge_cases.csv`.
+
+
+---
+
+Okay I ran `eval.sh` and got this output:
+
+```
+📈 Results Summary:
+  Total test cases: 1000
+  Successful runs: 866
+  Exact matches (±$0.01): 0 (0%)
+  Close matches (±$1.00): 17 (1.9%)
+  Average error: $52.92
+  Maximum error: $865.5489923108798
+
+🎯 Your Score: 5392.00 (lower is better)
+
+📚 Keep analyzing the patterns in the interviews and test cases.
+
+💡 Tips for improvement:
+  Check these high-error cases:
+    Case 152: 4 days, 69 miles, $2321.49 receipts
+      Expected: $322.00, Got: $1187.55, Error: $865.55
+    Case 684: 8 days, 795 miles, $1645.99 receipts
+      Expected: $644.69, Got: $1507.39, Error: $862.70
+    Case 996: 1 days, 1082 miles, $1809.49 receipts
+      Expected: $446.94, Got: $1237.20, Error: $790.26
+    Case 711: 5 days, 516 miles, $1878.49 receipts
+      Expected: $669.85, Got: $1378.95, Error: $709.10
+    Case 367: 11 days, 740 miles, $1171.99 receipts
+      Expected: $902.09, Got: $1589.43, Error: $687.34
+```
+
+You can read `eval.sh` to get the idea of what it's doing, but do not run it.
+
+I think the RF model is not so great by the standards of this eval. We should aim to get more close matches!
+
+Run the experiments to find the best set of hyperparameters again, but this time make sure that if the *best* cross-validated value of a hyperparameter is at the maximum or minimum of a range of experimentation, that we run another experiment with a wider range of parameters. Cross-validated performance is our north star - if the biggest model performs the best (on average across 5-fold train-test splits), then bigger is better, and we don't need to be afraid of overfitting if that's the case.
+
+Use the experimental framework we have to find the absolute best model and ensure it's saved in `production_model.pkl` at the end!
