@@ -7,3 +7,6 @@ Tasks:
     - the true y
     - the yhat values
     - the difference y-yhat
+  
+
+Now we are going to 

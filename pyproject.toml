@@ -7,6 +7,7 @@ requires-python = ">=3.12"
 dependencies = [
     "ipdb>=0.13.13",
     "matplotlib>=3.10.3",
+    "opentsne>=1.0.2",
     "pandas>=2.3.0",
     "pydantic>=2.11.5",
     "scikit-learn>=1.7.0",
